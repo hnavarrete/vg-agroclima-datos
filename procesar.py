@@ -35,7 +35,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import eccodes
 
-S3_ECMWF = "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com"
+# espejos de ECMWF Open Data, en orden (el de Amazon responde 503 a pedidos válidos: no se usa)
+ECMWF_BASES = ["https://storage.googleapis.com/ecmwf-open-data", "https://data.ecmwf.int/forecasts"]
 S3_GFS = "https://noaa-gfs-bdp-pds.s3.amazonaws.com"
 PASOS_3_6 = list(range(0, 145, 3)) + list(range(150, 193, 6))  # 57 pasos, 8 días
 PASOS_6 = list(range(0, 193, 6))                                 # 33 pasos, 8 días
@@ -54,7 +55,7 @@ CELDAS_R = TESELA * 4 + 1   # 121 (incluye el borde compartido)
 DIAS = 9
 
 S = requests.Session()
-S.mount("https://", HTTPAdapter(max_retries=Retry(total=6, backoff_factor=1.5, status_forcelist=[429, 500, 502, 503, 504]), pool_maxsize=16))
+S.mount("https://", HTTPAdapter(max_retries=Retry(total=4, backoff_factor=1.5, status_forcelist=[429, 500, 502, 503, 504]), pool_maxsize=16))
 S.headers["User-Agent"] = "vg-agroclima-datos (+https://agroclima.visiongeografica.com)"
 
 
@@ -69,10 +70,8 @@ def existe(modelo, corrida, paso):
     if m["fuente"] == "gfs":
         r = S.head(f"{S3_GFS}/gfs.{f}/{h:02d}/atmos/gfs.t{h:02d}z.pgrb2.0p25.f{paso:03d}.idx", timeout=30)
         return r.status_code == 200
-    # el espejo de ECMWF responde 503 a lo que no existe: se pregunta con el listado
-    pref = f"{f}/{h:02d}z/{m['ruta']}/{f}{h:02d}0000-{paso}h-oper-fc.index"
-    r = requests.get(S3_ECMWF + "/", params={"list-type": "2", "prefix": pref, "max-keys": "1"}, timeout=30)
-    return "<KeyCount>1</KeyCount>" in r.text
+    r = requests.head(f"{ECMWF_BASES[0]}/{f}/{h:02d}z/{m['ruta']}/{f}{h:02d}0000-{paso}h-oper-fc.index", timeout=30)
+    return r.status_code == 200
 
 
 def ultima_corrida(modelo):
@@ -89,9 +88,15 @@ def ultima_corrida(modelo):
 def rangos_ecmwf(modelo, corrida, paso):
     m = MODELOS[modelo]
     f, h = corrida.strftime("%Y%m%d"), corrida.hour
-    base = f"{S3_ECMWF}/{f}/{h:02d}z/{m['ruta']}/{f}{h:02d}0000-{paso}h-oper-fc"
-    idx = S.get(base + ".index", timeout=60)
-    idx.raise_for_status()
+    for espejo in ECMWF_BASES:
+        base = f"{espejo}/{f}/{h:02d}z/{m['ruta']}/{f}{h:02d}0000-{paso}h-oper-fc"
+        try:
+            idx = S.get(base + ".index", timeout=60)
+            idx.raise_for_status()
+            break
+        except requests.RequestException:
+            if espejo == ECMWF_BASES[-1]:
+                raise
     quiero = {"10u": "u", "10v": "v", "2t": "t", "tp": "acc"}
     out = {}
     for linea in idx.text.splitlines():
@@ -139,6 +144,7 @@ def decodificar(buf):
         ni, nj = eccodes.codes_get(h, "Ni"), eccodes.codes_get(h, "Nj")
         lo1 = eccodes.codes_get(h, "longitudeOfFirstGridPointInDegrees")
         jpos = eccodes.codes_get(h, "jScansPositively")
+        unidad = eccodes.codes_get(h, "units")
         v = eccodes.codes_get_values(h).astype(np.float32).reshape(nj, ni)
     finally:
         eccodes.codes_release(h)
@@ -147,7 +153,8 @@ def decodificar(buf):
     if jpos:
         v = v[::-1]
     lo1 = ((lo1 + 180) % 360) - 180
-    return np.roll(v, int(round((lo1 + 180) / 0.25)) % NI, axis=1)
+    v = np.roll(v, int(round((lo1 + 180) / 0.25)) % NI, axis=1)
+    return v * 1000.0 if unidad == "m" else v  # IFS da la precipitación en metros; AIFS y GFS, en kg/m² (= mm)
 
 
 def bajar_paso(modelo, corrida, paso):
@@ -162,8 +169,6 @@ def bajar_paso(modelo, corrida, paso):
             raise RuntimeError(f"{modelo} {corrida:%Y%m%d%H} +{paso}h: falta {k}")
         out[k] = decodificar(bajar(*rs[k]))
     out["t"] -= 273.15
-    if m["fuente"] == "ecmwf":
-        out["acc"] *= 1000.0  # metros → mm
     return out
 
 
