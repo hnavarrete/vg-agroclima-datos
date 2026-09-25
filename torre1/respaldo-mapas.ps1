@@ -1,6 +1,7 @@
 ﻿# Respaldo del proceso de mapas de VG Agroclima en la Torre 1.
-# La vía principal es GitHub Actions (4 veces al día). Este guion corre cada 3 horas por el
-# Programador de tareas y solo actúa si el manifiesto publicado tiene más de 14 horas: entonces
+# La vía principal es GitHub Actions (cada 6 horas). Este guion corre cada hora por el
+# Programador de tareas y solo actúa si el manifiesto publicado tiene más de 8 horas (GitHub se saltó
+# una corrida, o no arrancó): entonces
 # procesa aquí con el mismo procesar.py y publica en Cloudflare Pages. Sin tokens de Claude (R-TAREAS).
 # La credencial de Cloudflare se lee de la bóveda en Drive a variables de entorno; nunca se imprime (R19).
 param([switch]$Forzar, [int]$MaxPasos = 0, [string]$Rama = "main")
@@ -12,7 +13,7 @@ try {
   if (-not $Forzar) {
     $m = Invoke-RestMethod "https://vg-agroclima-datos.pages.dev/manifest.json" -TimeoutSec 60
     $edad = ((Get-Date).ToUniversalTime() - [datetime]::Parse($m.generado).ToUniversalTime()).TotalHours
-    if ($edad -lt 14) { Log ("al día: manifiesto de hace {0:N1} h" -f $edad); exit 0 }
+    if ($edad -lt 8) { Log ("al día: manifiesto de hace {0:N1} h" -f $edad); exit 0 }
     Log ("manifiesto de hace {0:N1} h: GitHub no actualizó, procesa la Torre 1" -f $edad)
   }
   # PowerShell 5.1 convierte en error cualquier línea que un programa escriba por stderr (avisos de npm,

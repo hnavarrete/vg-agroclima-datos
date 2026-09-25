@@ -11,6 +11,6 @@ archivos binarios livianos y los publica en Cloudflare Pages (`https://vg-agrocl
 - `.github/workflows/mapas.yml` — corre a las 02:30, 08:30, 14:30 y 20:30 UTC. El repositorio es público
   para que GitHub Actions no gaste cupo; no contiene secretos (la credencial de Cloudflare es un secreto
   cifrado del repositorio).
-- Respaldo: el mismo guion puede correr en la Torre 1 si GitHub falla.
+- Respaldo: la Torre 1 revisa cada hora; si el mapa lleva más de 8 horas sin actualizarse (GitHub se saltó una corrida), procesa y publica con el mismo guion (`torre1/respaldo-mapas.ps1`).
 
 Licencias de los datos: ECMWF Open Data (CC BY 4.0, datos modificados) y NOAA GFS (dominio público).
