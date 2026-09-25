@@ -26,11 +26,18 @@ try {
 
   # la letra de Google Drive cambia (G:, M:, E:…): se busca la bóveda en todas
   $boveda = Get-PSDrive -PSProvider FileSystem | ForEach-Object { "$($_.Root)Mi unidad\PROYECTOS PERSONALES\VG CREDENCIALES\cloudflare\cloudflare-tokens.txt" } | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if (-not $boveda) { throw "no se encontró la bóveda en Google Drive" }
-  foreach ($l in Get-Content $boveda) {
-    if ($l -match '^\s*API_TOKEN\s*=\s*"?([^"\s]+)') { $env:CLOUDFLARE_API_TOKEN = $Matches[1] }
-    if ($l -match '^\s*ACCOUNT_ID\s*=\s*"?([^"\s]+)') { $env:CLOUDFLARE_ACCOUNT_ID = $Matches[1] }
-  }
+  if ($boveda) {
+    foreach ($l in Get-Content $boveda) {
+      if ($l -match '^\s*API_TOKEN\s*=\s*"?([^"\s]+)') { $env:CLOUDFLARE_API_TOKEN = $Matches[1] }
+      if ($l -match '^\s*ACCOUNT_ID\s*=\s*"?([^"\s]+)') { $env:CLOUDFLARE_ACCOUNT_ID = $Matches[1] }
+    }
+  } elseif (Test-Path "$raiz\cloudflare.dpapi") {
+    # Drive no siempre está montado en la Torre 1: copia cifrada con DPAPI de la máquina (solo se descifra
+    # aquí), registrada en INDICE-TOKENS.md de la bóveda. Misma credencial: huella sha256 ea21571ac4.
+    Add-Type -AssemblyName System.Security
+    $d = [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes("$raiz\cloudflare.dpapi"), $null, "LocalMachine")).Split("`n")
+    $env:CLOUDFLARE_API_TOKEN = $d[0]; $env:CLOUDFLARE_ACCOUNT_ID = $d[1]
+  } else { throw "sin credencial de Cloudflare: ni bóveda en Drive ni copia cifrada" }
   & "D:\Program Files\nodejs\npx.cmd" --yes wrangler@3 pages deploy $salida --project-name=vg-agroclima-datos --branch=$Rama --commit-dirty=true 2>&1 | Select-Object -Last 2 | ForEach-Object { Log "  $_" }
   if ($LASTEXITCODE -ne 0) { throw "wrangler salió con $LASTEXITCODE" }
   Log "publicado desde la Torre 1 (rama $Rama)"
