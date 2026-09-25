@@ -25,6 +25,7 @@ import datetime as dt
 import json
 import os
 import sys
+import threading
 import time
 import zlib
 from concurrent.futures import ThreadPoolExecutor
@@ -137,7 +138,15 @@ def bajar(url, ini, fin):
     return r.content
 
 
+CANDADO = threading.Lock()  # ecCodes no es seguro entre hilos (en Windows se cae): se decodifica de a uno
+
+
 def decodificar(buf):
+    with CANDADO:
+        return _decodificar(buf)
+
+
+def _decodificar(buf):
     """GRIB2 → matriz (721, 1440), norte arriba, longitudes desde -180."""
     h = eccodes.codes_new_from_message(buf)
     try:
