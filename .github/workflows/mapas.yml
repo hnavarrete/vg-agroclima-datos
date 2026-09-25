@@ -1,11 +1,12 @@
 name: Mapas de pronóstico
 
-# Cuatro veces al día, cuando ya salieron las corridas de los tres centros:
-#   02:30 UTC → GFS 18z, AIFS 18z, IFS 12z   ·   08:30 → GFS/AIFS/IFS 00z
-#   14:30 UTC → GFS 06z, AIFS 06z, IFS 00z   ·   20:30 → GFS/AIFS/IFS 12z
+# Cuatro veces al día, cuando ya salieron las corridas de los tres centros. Minuto 47 y no 00/30:
+# GitHub retrasa o salta los cron de las horas en punto y medias, que son las más congestionadas.
+#   02:47 UTC → GFS 18z, AIFS 18z, IFS 12z   ·   08:47 → GFS/AIFS/IFS 00z
+#   14:47 UTC → GFS 06z, AIFS 06z, IFS 00z   ·   20:47 → GFS/AIFS/IFS 12z
 on:
   schedule:
-    - cron: "30 2,8,14,20 * * *"
+    - cron: "47 2,8,14,20 * * *"
   workflow_dispatch:
     inputs:
       max_pasos:
