@@ -1,0 +1,4 @@
+eccodes>=2.38
+eccodeslib
+numpy
+requests

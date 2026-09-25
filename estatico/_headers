@@ -1,0 +1,10 @@
+/*
+  Access-Control-Allow-Origin: *
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Robots-Tag: noindex
+/manifest.json
+  Cache-Control: public, max-age=300, must-revalidate
+/*.bin
+  Cache-Control: public, max-age=604800, immutable
+  Content-Type: application/octet-stream
