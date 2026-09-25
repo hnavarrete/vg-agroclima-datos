@@ -15,6 +15,9 @@ try {
     if ($edad -lt 14) { Log ("al día: manifiesto de hace {0:N1} h" -f $edad); exit 0 }
     Log ("manifiesto de hace {0:N1} h: GitHub no actualizó, procesa la Torre 1" -f $edad)
   }
+  # PowerShell 5.1 convierte en error cualquier línea que un programa escriba por stderr (avisos de npm,
+  # de git…): para los programas externos manda su código de salida, no esa salida
+  $ErrorActionPreference = "Continue"
   git -C $repo pull -q
   $env:PATH = "$raiz\agroclima-env;$raiz\agroclima-env\Library\bin;" + $env:PATH
   $env:PYTHONIOENCODING = "utf-8"
