@@ -28,6 +28,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -79,13 +80,17 @@ def existe(modelo, corrida, paso):
     return r.status_code == 200
 
 
-def ultima_corrida(modelo):
+def ultima_corrida(modelo, saltar=0):
+    """La corrida completa más nueva; con saltar=1, la anterior (respaldo si la más nueva falla al bajarla)."""
     m = MODELOS[modelo]
     ahora = dt.datetime.now(dt.timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None)
+    vistas = 0
     for k in range(0, 54):
         c = ahora - dt.timedelta(hours=k)
         if c.hour in m["ciclos"] and existe(modelo, c, m["pasos"][-1]):
-            return c
+            if vistas == saltar:
+                return c
+            vistas += 1
     raise RuntimeError(f"{modelo}: no hay corrida completa en las últimas 54 horas")
 
 
@@ -279,10 +284,10 @@ def planos_extra(c, c_prev, dt_h, pacc):
     return planos, hay
 
 
-def procesar(modelo, salida, max_pasos=None):
+def procesar(modelo, salida, max_pasos=None, saltar=0):
     m = MODELOS[modelo]
     t0 = time.time()
-    corrida = ultima_corrida(modelo)
+    corrida = ultima_corrida(modelo, saltar)
     pasos = m["pasos"][: max_pasos or None]
     tag = corrida.strftime("%Y%m%d%H")
     raiz = os.path.join(salida, modelo, tag)
@@ -396,11 +401,23 @@ def main():
     }
     fallos = []
     for k in a.modelos.split(","):
-        try:
-            man["modelos"][k] = procesar(k, a.salida, a.max_pasos)
-        except Exception as e:  # un modelo caído no tumba a los otros dos
-            log(f"{k}: FALLÓ: {e}")
-            fallos.append(k)
+        # 20-oct: la corrida 06Z de AIFS dio 404 en el paso 0 aunque el último paso ya estaba publicado, y el modelo
+        # quedó fuera del manifiesto 6 horas. Si la corrida más nueva falla, se publica la anterior (y se borra lo
+        # que quedó a medias): el mapa sigue con el modelo, un ciclo más viejo, en vez de quedarse sin él.
+        for saltar in (0, 1):
+            antes = set(os.listdir(os.path.join(a.salida, k))) if os.path.isdir(os.path.join(a.salida, k)) else set()
+            try:
+                man["modelos"][k] = procesar(k, a.salida, a.max_pasos, saltar)
+                if saltar:
+                    log(f"{k}: se publicó la corrida anterior ({man['modelos'][k]['corrida']})")
+                    fallos.append(k + " (corrida anterior)")
+                break
+            except Exception as e:  # un modelo caído no tumba a los otros dos
+                log(f"{k}: FALLÓ{' también la corrida anterior' if saltar else ''}: {e}")
+                for d in set(os.listdir(os.path.join(a.salida, k))) - antes if os.path.isdir(os.path.join(a.salida, k)) else ():
+                    shutil.rmtree(os.path.join(a.salida, k, d), ignore_errors=True)
+                if saltar:
+                    fallos.append(k)
     if not man["modelos"]:
         sys.exit("Ningún modelo se pudo procesar")
     with open(os.path.join(a.salida, "manifest.json"), "w", encoding="utf-8") as fh:
